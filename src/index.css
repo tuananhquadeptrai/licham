@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased dark:bg-gray-900 dark:text-gray-100;
+  }
+}
+
+@layer components {
+  .calendar-cell {
+    @apply relative flex flex-col items-center justify-start p-0.5 md:p-1 min-h-[60px] md:min-h-[80px] border border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer dark:border-gray-700 dark:hover:bg-gray-800;
+  }
+  
+  .calendar-cell-today {
+    @apply bg-blue-50 border-blue-300 dark:bg-blue-900/40 dark:border-blue-500;
+  }
+  
+  .calendar-cell-selected {
+    @apply bg-blue-100 border-blue-500 dark:bg-blue-700/60 dark:border-blue-300;
+  }
+  
+  .calendar-cell-weekend {
+    @apply bg-red-50/30 dark:bg-red-900/30;
+  }
+  
+  .calendar-cell-other-month {
+    @apply opacity-40;
+  }
+  
+  .lunar-date {
+    @apply text-[10px] md:text-xs text-red-600 font-medium dark:text-amber-400;
+  }
+  
+  .solar-date {
+    @apply text-base md:text-lg font-semibold;
+  }
+  
+  .holiday-badge {
+    @apply absolute bottom-0.5 md:bottom-1 left-1/2 -translate-x-1/2 text-[8px] md:text-[10px] text-red-600 font-medium truncate max-w-[90%] dark:text-amber-400;
+  }
+  
+  .btn-primary {
+    @apply px-3 py-1.5 md:px-4 md:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm md:text-base dark:bg-blue-500 dark:hover:bg-blue-400;
+  }
+  
+  .btn-secondary {
+    @apply px-3 py-1.5 md:px-4 md:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium text-sm md:text-base dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

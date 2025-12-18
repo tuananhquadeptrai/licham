@@ -1,0 +1,1 @@
+export { FengShuiPanel } from './FengShuiPanel';
