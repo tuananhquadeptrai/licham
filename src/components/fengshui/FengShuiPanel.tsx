@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { fengShuiService, type FengShuiDayInfo } from '../../services/FengShuiService';
 import type { SolarDate } from '../../lib/amlich/types';
 import { getNguHanhColor, type NguHanh } from '../../config/canChi';
 import { useProfileStore } from '../../store/useProfileStore';
 import type { FamilyProfile } from '../../types/profile';
+import { hasFullBirthday } from '../../types/profile';
+import { getProfileWesternZodiac, getDailyMessage } from '../../services/westernZodiac';
+import { ZodiacCompatibilityModal } from './ZodiacCompatibilityModal';
 
 interface FengShuiPanelProps {
   solarDate: SolarDate;
@@ -14,6 +17,7 @@ export function FengShuiPanel({ solarDate, className = '' }: FengShuiPanelProps)
   const fengShui = fengShuiService.getFengShuiForDate(solarDate);
   const { getSelectedProfile } = useProfileStore();
   const selectedProfile = getSelectedProfile();
+  const [showCompatibilityModal, setShowCompatibilityModal] = useState(false);
 
   const personalCheck = selectedProfile 
     ? fengShuiService.checkDateForPerson(solarDate, selectedProfile.birthYear)
@@ -33,7 +37,19 @@ export function FengShuiPanel({ solarDate, className = '' }: FengShuiPanelProps)
           profile={selectedProfile} 
           check={personalCheck} 
           solarDate={solarDate}
+          onOpenCompatibility={() => setShowCompatibilityModal(true)}
         />
+      )}
+
+      {/* Zodiac Compatibility Button (if no profile selected) */}
+      {!selectedProfile && (
+        <button
+          onClick={() => setShowCompatibilityModal(true)}
+          className="w-full py-3 px-4 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-purple-600 transition-all flex items-center justify-center gap-2"
+        >
+          <span>💑</span>
+          <span>Xem Hợp Tuổi</span>
+        </button>
       )}
 
       {/* Tags */}
@@ -62,6 +78,13 @@ export function FengShuiPanel({ solarDate, className = '' }: FengShuiPanelProps)
            </ul>
          </div>
       )}
+
+      {/* Zodiac Compatibility Modal */}
+      <ZodiacCompatibilityModal 
+        isOpen={showCompatibilityModal}
+        onClose={() => setShowCompatibilityModal(false)}
+        initialProfileId={selectedProfile?.id}
+      />
     </div>
   );
 }
@@ -267,11 +290,13 @@ interface PersonalFengShuiSectionProps {
   profile: FamilyProfile;
   check: { compatible: boolean; score: number; reasons: string[] };
   solarDate: SolarDate;
+  onOpenCompatibility: () => void;
 }
 
-function PersonalFengShuiSection({ profile, check, solarDate }: PersonalFengShuiSectionProps) {
+function PersonalFengShuiSection({ profile, check, solarDate, onOpenCompatibility }: PersonalFengShuiSectionProps) {
   const personalFengShui = fengShuiService.getPersonalFengShui(profile.birthYear, solarDate.year);
   const currentYearHan = personalFengShui.hanTuoi.filter(h => h.year === solarDate.year);
+  const westernZodiac = getProfileWesternZodiac(profile);
 
   return (
     <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-lg p-4 border border-purple-100 dark:border-purple-800">
@@ -336,6 +361,41 @@ function PersonalFengShuiSection({ profile, check, solarDate }: PersonalFengShui
           </ul>
         </div>
       )}
+
+      {/* Western Zodiac */}
+      {westernZodiac && (
+        <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-700">
+          <h4 className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-2">
+            <span>{westernZodiac.info.symbol}</span>
+            <span>Cung {westernZodiac.info.nameVi}</span>
+          </h4>
+          <div className="text-sm text-indigo-700 dark:text-indigo-300 space-y-1">
+            <p><span className="font-medium">Nguyên tố:</span> {westernZodiac.info.element}</p>
+            <p><span className="font-medium">Hành tinh:</span> {westernZodiac.info.rulingPlanet}</p>
+            <p className="text-xs mt-2 text-gray-600 dark:text-gray-400">
+              💫 {getDailyMessage(westernZodiac.sign)}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Hint to add birthday for Western Zodiac */}
+      {!westernZodiac && !hasFullBirthday(profile) && (
+        <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-700">
+          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+            💡 Thêm ngày/tháng sinh để xem cung hoàng đạo
+          </p>
+        </div>
+      )}
+
+      {/* Compatibility Button */}
+      <button
+        onClick={onOpenCompatibility}
+        className="mt-3 w-full py-2 px-3 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg text-sm font-medium hover:from-pink-600 hover:to-purple-600 transition-all flex items-center justify-center gap-2"
+      >
+        <span>💑</span>
+        <span>Xem Hợp Tuổi</span>
+      </button>
     </div>
   );
 }

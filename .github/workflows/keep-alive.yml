@@ -1,0 +1,15 @@
+name: Keep Alive
+
+on:
+  schedule:
+    # Chạy mỗi 10 phút
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping server
+        run: |
+          curl -s https://lich-am-vietnam.onrender.com || true

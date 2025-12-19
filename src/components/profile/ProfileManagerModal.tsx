@@ -11,6 +11,8 @@ interface ProfileManagerModalProps {
 interface FormData {
   name: string;
   birthYear: string;
+  birthMonth: string;
+  birthDay: string;
   gender: 'male' | 'female';
   relationship: string;
 }
@@ -18,6 +20,8 @@ interface FormData {
 const initialFormData: FormData = {
   name: '',
   birthYear: '',
+  birthMonth: '',
+  birthDay: '',
   gender: 'male',
   relationship: '',
 };
@@ -45,6 +49,8 @@ export function ProfileManagerModal({ isOpen, onClose }: ProfileManagerModalProp
     setFormData({
       name: profile.name,
       birthYear: profile.birthYear.toString(),
+      birthMonth: profile.birthMonth ? profile.birthMonth.toString() : '',
+      birthDay: profile.birthDay ? profile.birthDay.toString() : '',
       gender: profile.gender,
       relationship: profile.relationship || '',
     });
@@ -60,9 +66,21 @@ export function ProfileManagerModal({ isOpen, onClose }: ProfileManagerModalProp
       return;
     }
 
+    const birthMonth = formData.birthMonth ? parseInt(formData.birthMonth, 10) : undefined;
+    const birthDay = formData.birthDay ? parseInt(formData.birthDay, 10) : undefined;
+
+    if (birthMonth !== undefined && (isNaN(birthMonth) || birthMonth < 1 || birthMonth > 12)) {
+      return;
+    }
+    if (birthDay !== undefined && (isNaN(birthDay) || birthDay < 1 || birthDay > 31)) {
+      return;
+    }
+
     const profileData = {
       name: formData.name.trim(),
       birthYear,
+      birthMonth: birthMonth && !isNaN(birthMonth) ? birthMonth : undefined,
+      birthDay: birthDay && !isNaN(birthDay) ? birthDay : undefined,
       gender: formData.gender,
       relationship: formData.relationship || undefined,
     };
@@ -122,7 +140,9 @@ export function ProfileManagerModal({ isOpen, onClose }: ProfileManagerModalProp
                     <div>
                       <div className="font-medium text-gray-800 dark:text-gray-100">{profile.name}</div>
                       <div className="text-sm text-gray-500 dark:text-gray-400">
-                        {profile.birthYear} • {profile.gender === 'male' ? 'Nam' : 'Nữ'}
+                        {profile.birthDay && profile.birthMonth 
+                          ? `${profile.birthDay}/${profile.birthMonth}/${profile.birthYear}` 
+                          : profile.birthYear} • {profile.gender === 'male' ? 'Nam' : 'Nữ'}
                         {profile.relationship && ` • ${profile.relationship}`}
                       </div>
                     </div>
@@ -210,6 +230,35 @@ export function ProfileManagerModal({ isOpen, onClose }: ProfileManagerModalProp
                   className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   required
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">
+                  Ngày/Tháng sinh (tùy chọn)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={formData.birthDay}
+                    onChange={(e) => setFormData({ ...formData, birthDay: e.target.value })}
+                    placeholder="Ngày"
+                    min="1"
+                    max="31"
+                    className="w-1/2 px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <input
+                    type="number"
+                    value={formData.birthMonth}
+                    onChange={(e) => setFormData({ ...formData, birthMonth: e.target.value })}
+                    placeholder="Tháng"
+                    min="1"
+                    max="12"
+                    className="w-1/2 px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">
+                  Nhập đủ ngày/tháng để dùng đầy đủ tính năng phong thủy
+                </p>
               </div>
 
               <div>

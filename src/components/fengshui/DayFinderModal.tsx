@@ -1,16 +1,18 @@
 /**
  * Modal tìm ngày tốt theo mục đích
  * Cho phép chọn loại hoạt động và tìm ngày phù hợp
+ * YÊU CẦU: Chọn 2 người có đầy đủ ngày tháng năm sinh
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { findGoodDays, type DayEvaluationResult } from '../../services/dayEvaluator';
 import { ACTIVITY_LABELS, type ActivityType } from '../../types/auspicious';
 import type { SolarDate } from '../../lib/amlich/types';
 import { getLunarService } from '../../services/LunarServiceImpl';
 import { useCalendarStore } from '../../store/useCalendarStore';
 import { useProfileStore } from '../../store/useProfileStore';
-import type { FamilyProfile } from '../../types/profile';
+import type { FamilyProfile, OwnerParticipant } from '../../types/profile';
+import { hasFullBirthday, profileToOwner } from '../../types/profile';
 
 interface DayFinderModalProps {
   isOpen: boolean;
@@ -45,6 +47,21 @@ function getScoreBadgeColor(score: number): string {
   return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
 }
 
+function formatProfileBirthday(profile: FamilyProfile): string {
+  if (hasFullBirthday(profile)) {
+    return `${profile.birthDay}/${profile.birthMonth}/${profile.birthYear}`;
+  }
+  return `${profile.birthYear} (thiếu ngày/tháng)`;
+}
+
+const ACTIVITIES_REQUIRING_TWO_OWNERS: ActivityType[] = [
+  'wedding',
+  'construction', 
+  'move_house',
+  'start_business',
+  'sign_contract',
+];
+
 export function DayFinderModal({ isOpen, onClose, onSelectDate }: DayFinderModalProps) {
   const { locale } = useCalendarStore();
   const { profiles, getSelectedProfile } = useProfileStore();
@@ -68,42 +85,66 @@ export function DayFinderModal({ isOpen, onClose, onSelectDate }: DayFinderModal
   const [activity, setActivity] = useState<ActivityType>('general');
   const [fromDate, setFromDate] = useState<SolarDate>(defaultFromDate);
   const [toDate, setToDate] = useState<SolarDate>(defaultToDate);
-  const [birthYear, setBirthYear] = useState<string>('');
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [owner1Id, setOwner1Id] = useState<string>('');
+  const [owner2Id, setOwner2Id] = useState<string>('');
   const [results, setResults] = useState<DayEvaluationResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
+  const requiresTwoOwners = ACTIVITIES_REQUIRING_TWO_OWNERS.includes(activity);
+
+  const validProfiles = useMemo(() => {
+    return profiles.filter(p => hasFullBirthday(p));
+  }, [profiles]);
+
+  const incompleteProfiles = useMemo(() => {
+    return profiles.filter(p => !hasFullBirthday(p));
+  }, [profiles]);
+
+  const owner1 = useMemo(() => {
+    return profiles.find(p => p.id === owner1Id) || null;
+  }, [profiles, owner1Id]);
+
+  const owner2 = useMemo(() => {
+    return profiles.find(p => p.id === owner2Id) || null;
+  }, [profiles, owner2Id]);
+
+  const ownersValid = useMemo(() => {
+    if (!requiresTwoOwners) return true;
+    if (!owner1 || !owner2) return false;
+    if (owner1.id === owner2.id) return false;
+    return hasFullBirthday(owner1) && hasFullBirthday(owner2);
+  }, [requiresTwoOwners, owner1, owner2]);
+
   useEffect(() => {
     const globalProfile = getSelectedProfile();
-    if (globalProfile && !selectedProfileId) {
-      setSelectedProfileId(globalProfile.id);
-      setBirthYear(globalProfile.birthYear.toString());
+    if (globalProfile && !owner1Id && hasFullBirthday(globalProfile)) {
+      setOwner1Id(globalProfile.id);
     }
-  }, [getSelectedProfile, selectedProfileId]);
-
-  const handleProfileChange = (profileId: string) => {
-    setSelectedProfileId(profileId);
-    if (profileId) {
-      const profile = profiles.find(p => p.id === profileId);
-      if (profile) {
-        setBirthYear(profile.birthYear.toString());
-      }
-    } else {
-      setBirthYear('');
-    }
-  };
+  }, [getSelectedProfile, owner1Id]);
 
   const handleSearch = useCallback(() => {
+    if (requiresTwoOwners && !ownersValid) return;
+    
     setIsLoading(true);
     setHasSearched(true);
 
     setTimeout(() => {
+      let owners: OwnerParticipant[] | undefined;
+      
+      if (requiresTwoOwners && owner1 && owner2) {
+        const o1 = profileToOwner(owner1);
+        const o2 = profileToOwner(owner2);
+        if (o1 && o2) {
+          owners = [o1, o2];
+        }
+      }
+
       const options = {
         activity,
         fromDate,
         toDate,
-        birthYear: birthYear ? parseInt(birthYear, 10) : undefined,
+        owners,
         minScore: 50,
         limit: 30,
       };
@@ -112,7 +153,7 @@ export function DayFinderModal({ isOpen, onClose, onSelectDate }: DayFinderModal
       setResults(goodDays);
       setIsLoading(false);
     }, 100);
-  }, [activity, fromDate, toDate, birthYear]);
+  }, [activity, fromDate, toDate, requiresTwoOwners, ownersValid, owner1, owner2]);
 
   const handleSelectDate = (date: SolarDate) => {
     onSelectDate?.(date);
@@ -129,8 +170,8 @@ export function DayFinderModal({ isOpen, onClose, onSelectDate }: DayFinderModal
     setActivity('general');
     setFromDate(defaultFromDate);
     setToDate(defaultToDate);
-    setBirthYear('');
-    setSelectedProfileId('');
+    setOwner1Id('');
+    setOwner2Id('');
     setResults([]);
     setHasSearched(false);
   };
@@ -162,28 +203,7 @@ export function DayFinderModal({ isOpen, onClose, onSelectDate }: DayFinderModal
         </div>
 
         {/* Form */}
-        <div className="p-4 space-y-4 border-b dark:border-gray-700">
-          {/* Profile Select (if profiles exist) */}
-          {profiles.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                {isVi ? 'Chọn hồ sơ' : 'Select Profile'}
-              </label>
-              <select
-                value={selectedProfileId}
-                onChange={(e) => handleProfileChange(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">{isVi ? '-- Nhập năm sinh thủ công --' : '-- Enter birth year manually --'}</option>
-                {profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name} ({profile.birthYear})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
+        <div className="p-4 space-y-4 border-b dark:border-gray-700 overflow-y-auto">
           {/* Activity Select */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
@@ -201,6 +221,89 @@ export function DayFinderModal({ isOpen, onClose, onSelectDate }: DayFinderModal
               ))}
             </select>
           </div>
+
+          {/* Owner Selection - Show when activity requires 2 owners */}
+          {requiresTwoOwners && (
+            <div className="space-y-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+              <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                <span className="text-lg">👥</span>
+                <span className="font-medium text-sm">
+                  {isVi ? 'Chọn 2 người (chủ) có đầy đủ ngày sinh' : 'Select 2 people with full birthdays'}
+                </span>
+              </div>
+              
+              {validProfiles.length < 2 && (
+                <div className="text-sm text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 p-2 rounded">
+                  {isVi 
+                    ? `⚠️ Cần ít nhất 2 hồ sơ có đầy đủ ngày/tháng/năm sinh. Hiện có ${validProfiles.length} hồ sơ hợp lệ.`
+                    : `⚠️ Need at least 2 profiles with full birthdays. Currently have ${validProfiles.length} valid.`}
+                </div>
+              )}
+
+              {/* Owner 1 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">
+                  {isVi ? 'Chủ 1 (Người thứ nhất)' : 'Owner 1 (First person)'}
+                </label>
+                <select
+                  value={owner1Id}
+                  onChange={(e) => setOwner1Id(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">{isVi ? '-- Chọn người --' : '-- Select person --'}</option>
+                  {validProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id} disabled={profile.id === owner2Id}>
+                      {profile.name} ({formatProfileBirthday(profile)})
+                    </option>
+                  ))}
+                  {incompleteProfiles.length > 0 && (
+                    <optgroup label={isVi ? 'Thiếu ngày sinh' : 'Missing birthday'}>
+                      {incompleteProfiles.map((profile) => (
+                        <option key={profile.id} value={profile.id} disabled>
+                          {profile.name} ({profile.birthYear}) - {isVi ? 'thiếu ngày/tháng' : 'missing day/month'}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {/* Owner 2 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">
+                  {isVi ? 'Chủ 2 (Người thứ hai)' : 'Owner 2 (Second person)'}
+                </label>
+                <select
+                  value={owner2Id}
+                  onChange={(e) => setOwner2Id(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">{isVi ? '-- Chọn người --' : '-- Select person --'}</option>
+                  {validProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id} disabled={profile.id === owner1Id}>
+                      {profile.name} ({formatProfileBirthday(profile)})
+                    </option>
+                  ))}
+                  {incompleteProfiles.length > 0 && (
+                    <optgroup label={isVi ? 'Thiếu ngày sinh' : 'Missing birthday'}>
+                      {incompleteProfiles.map((profile) => (
+                        <option key={profile.id} value={profile.id} disabled>
+                          {profile.name} ({profile.birthYear}) - {isVi ? 'thiếu ngày/tháng' : 'missing day/month'}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {/* Validation message */}
+              {owner1Id && owner2Id && owner1Id === owner2Id && (
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  {isVi ? '⚠️ Vui lòng chọn 2 người khác nhau' : '⚠️ Please select 2 different people'}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Date Range */}
           <div className="grid grid-cols-2 gap-4">
@@ -228,36 +331,11 @@ export function DayFinderModal({ isOpen, onClose, onSelectDate }: DayFinderModal
             </div>
           </div>
 
-          {/* Birth Year (Optional) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-              {isVi ? 'Năm sinh (tùy chọn)' : 'Birth Year (optional)'}
-            </label>
-            <input
-              type="number"
-              value={birthYear}
-              onChange={(e) => {
-                setBirthYear(e.target.value);
-                setSelectedProfileId('');
-              }}
-              placeholder={isVi ? 'VD: 1990' : 'e.g., 1990'}
-              min="1900"
-              max="2100"
-              disabled={!!selectedProfileId}
-              className={`w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${selectedProfileId ? 'opacity-60 cursor-not-allowed' : ''}`}
-            />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {selectedProfileId 
-                ? (isVi ? 'Đang sử dụng năm sinh từ hồ sơ đã chọn' : 'Using birth year from selected profile')
-                : (isVi ? 'Nhập năm sinh để xét tuổi xung hợp' : 'Enter birth year to check age compatibility')}
-            </p>
-          </div>
-
           {/* Action Buttons */}
           <div className="flex gap-2">
             <button
               onClick={handleSearch}
-              disabled={isLoading}
+              disabled={isLoading || (requiresTwoOwners && !ownersValid)}
               className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isLoading ? (
@@ -313,6 +391,11 @@ export function DayFinderModal({ isOpen, onClose, onSelectDate }: DayFinderModal
                 {isVi
                   ? `Tìm thấy ${results.length} ngày phù hợp cho ${ACTIVITY_LABELS[activity].vi}`
                   : `Found ${results.length} suitable days for ${ACTIVITY_LABELS[activity].en}`}
+                {requiresTwoOwners && owner1 && owner2 && (
+                  <span className="block mt-1 text-blue-600 dark:text-blue-400">
+                    👥 {owner1.name} & {owner2.name}
+                  </span>
+                )}
               </p>
               {results.map((result, index) => {
                 const lunar = lunarService.getLunarDate(result.date);
@@ -368,9 +451,13 @@ export function DayFinderModal({ isOpen, onClose, onSelectDate }: DayFinderModal
                 {isVi ? 'Tìm ngày tốt cho công việc của bạn' : 'Find good days for your activities'}
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
-                {isVi
-                  ? 'Chọn loại hoạt động và khoảng thời gian, sau đó nhấn "Tìm ngày tốt"'
-                  : 'Select activity type and date range, then click "Find Good Days"'}
+                {requiresTwoOwners 
+                  ? (isVi
+                    ? 'Chọn 2 người tham gia (có đầy đủ ngày sinh), khoảng thời gian, sau đó nhấn "Tìm ngày tốt"'
+                    : 'Select 2 participants (with full birthdays), date range, then click "Find Good Days"')
+                  : (isVi
+                    ? 'Chọn loại hoạt động và khoảng thời gian, sau đó nhấn "Tìm ngày tốt"'
+                    : 'Select activity type and date range, then click "Find Good Days"')}
               </p>
             </div>
           )}

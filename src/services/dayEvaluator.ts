@@ -5,10 +5,11 @@
 
 import type { SolarDate } from '../lib/amlich/types';
 import type { ActivityType, AuspiciousRule } from '../types/auspicious';
+import type { OwnerParticipant } from '../types/profile';
 import { getLunarService } from './LunarServiceImpl';
 import { getDayStars, getMonthChiIndex } from './starsCalculator';
 import { AUSPICIOUS_RULES, SCORE_WEIGHTS, CHI_NAMES } from '../config/auspiciousRules';
-import { getChiIndexFromYear, isAgeCompatibleWithDay } from './ageCompatibility';
+import { getChiIndexFromYear, isAgeCompatibleWithDay, getAgeCompatibility } from './ageCompatibility';
 import type { KienTruNature } from '../config/auspiciousStars';
 
 // ==================== TYPES ====================
@@ -28,6 +29,7 @@ export interface DaySearchOptions {
   fromDate: SolarDate;
   toDate: SolarDate;
   birthYear?: number;
+  owners?: OwnerParticipant[];
   minScore?: number;
   limit?: number;
 }
@@ -126,7 +128,8 @@ function isDateInRange(date: SolarDate, from: SolarDate, to: SolarDate): boolean
 export function evaluateDayForActivity(
   date: SolarDate,
   activity: ActivityType,
-  birthYear?: number
+  birthYear?: number,
+  owners?: OwnerParticipant[]
 ): DayEvaluationResult {
   const lunarService = getLunarService();
   const lunarDate = lunarService.getLunarDate(date);
@@ -239,6 +242,60 @@ export function evaluateDayForActivity(
     warnings.push(rule.notes.vi);
   }
   
+  // 9. Kiểm tra tương hợp giữa 2 chủ (nếu có owners)
+  if (owners && owners.length === 2) {
+    const [owner1, owner2] = owners;
+    
+    // 9a. Kiểm tra từng người với ngày
+    for (const owner of owners) {
+      const ownerCompat = isAgeCompatibleWithDay(owner.birth.year, dayChiIndex);
+      
+      if (ownerCompat.relation === 'tu_hanh_xung') {
+        score -= 20;
+        warnings.push(`Ngày xung với tuổi ${owner.name}`);
+      } else if (ownerCompat.relation === 'tuong_hinh' || ownerCompat.relation === 'tuong_hai') {
+        score -= 10;
+        warnings.push(`Ngày không hợp tuổi ${owner.name}`);
+      } else if (ownerCompat.relation === 'tam_hop' || ownerCompat.relation === 'luc_hop') {
+        score += 5;
+        reasons.push(`Ngày hợp tuổi ${owner.name}`);
+      }
+      
+      // Kiểm tra Tam Tai / Kim Lâu
+      const majorActivities: ActivityType[] = ['wedding', 'construction', 'move_house', 'start_business'];
+      if (majorActivities.includes(activity)) {
+        if (isTamTaiYear(owner.birth.year, date.year)) {
+          score -= 15;
+          warnings.push(`${owner.name}: Năm Tam Tai`);
+        }
+        if (isKimLauAge(owner.birth.year, date.year)) {
+          score -= 10;
+          warnings.push(`${owner.name}: Tuổi Kim Lâu`);
+        }
+      }
+    }
+    
+    // 9b. Kiểm tra tương hợp giữa 2 người với nhau
+    const pairCompat = getAgeCompatibility(owner1.birth.year, owner2.birth.year);
+    
+    if (pairCompat.relation === 'tam_hop') {
+      score += 15;
+      tags.push('Đôi Tam Hợp');
+      reasons.push(`${owner1.name} & ${owner2.name}: Tam Hợp - Rất hợp nhau`);
+    } else if (pairCompat.relation === 'luc_hop') {
+      score += 10;
+      tags.push('Đôi Lục Hợp');
+      reasons.push(`${owner1.name} & ${owner2.name}: Lục Hợp - Hợp nhau`);
+    } else if (pairCompat.relation === 'tu_hanh_xung') {
+      score -= 20;
+      tags.push('Đôi Xung');
+      warnings.push(`${owner1.name} & ${owner2.name}: Tứ Hành Xung - Cần hóa giải`);
+    } else if (pairCompat.relation === 'tuong_hinh' || pairCompat.relation === 'tuong_hai') {
+      score -= 10;
+      warnings.push(`${owner1.name} & ${owner2.name}: ${pairCompat.description.vi}`);
+    }
+  }
+  
   // Clamp score to 0-100
   score = Math.max(0, Math.min(100, score));
   
@@ -262,6 +319,7 @@ export function findGoodDays(options: DaySearchOptions): DayEvaluationResult[] {
     fromDate,
     toDate,
     birthYear,
+    owners,
     minScore = 60,
     limit = 30,
   } = options;
@@ -270,7 +328,7 @@ export function findGoodDays(options: DaySearchOptions): DayEvaluationResult[] {
   let currentDate = { ...fromDate };
   
   while (isDateInRange(currentDate, fromDate, toDate) && results.length < limit) {
-    const evaluation = evaluateDayForActivity(currentDate, activity, birthYear);
+    const evaluation = evaluateDayForActivity(currentDate, activity, birthYear, owners);
     
     if (evaluation.score >= minScore) {
       results.push(evaluation);
